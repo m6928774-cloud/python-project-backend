@@ -198,3 +198,10 @@ def chat(req: ChatRequest):
         return {"reply": "BMI > 30 increases risk"}
     else:
         return {"reply": "I am working 🙂 Try asking about diabetes, glucose, or BMI"}
+@app.get("/")
+def home():
+    return {
+        "message": "🩺 Diabetes Prediction API is running successfully",
+        "docs": "/docs",
+        "status": "OK"
+    }
