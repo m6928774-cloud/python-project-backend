@@ -1,32 +1,17 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import pickle
-import numpy as np
-import os
+import matplotlib.pyplot as plt
+import random
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-# DB
-from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Auth
-from passlib.context import CryptContext
-
-# Graph & SHAP
-import matplotlib.pyplot as plt
-import shap
-
-# PDF
-from reportlab.platypus import SimpleDocTemplate, Paragraph
-from reportlab.lib.styles import getSampleStyleSheet
-
-# ---------------------------
-# APP
-# ---------------------------
 app = FastAPI()
 
+# ✅ CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,18 +20,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------
-# DATABASE
-# ---------------------------
-DATABASE_URL = "sqlite:///./diabetes.db"
-
-engine = create_engine(DATABASE_URL)
+# ---------- DATABASE ----------
+engine = create_engine("sqlite:///./diabetes.db")
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
-# ---------------------------
-# MODELS
-# ---------------------------
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -64,192 +42,159 @@ class Patient(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# ---------------------------
-# AUTH
-# ---------------------------
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# ---------- MODELS ----------
+class UserAuth(BaseModel):
+    username: str
+    password: str
 
-# ---------------------------
-# MODEL
-# ---------------------------
-model = pickle.load(open("model.pkl", "rb"))
-explainer = shap.Explainer(model)
-
-# ---------------------------
-# INPUT
-# ---------------------------
 class PatientData(BaseModel):
-    pregnancies: int
+    user_id: int
+    pregnancies: float
     glucose: float
     blood_pressure: float
     skin_thickness: float
     insulin: float
     bmi: float
     diabetes_pedigree: float
-    age: int
+    age: float
 
-# ---------------------------
-# HOME
-# ---------------------------
-@app.get("/")
-def home():
-    return {"message": "API running"}
+class ChatRequest(BaseModel):
+    message: str
 
-# ---------------------------
-# SIGNUP
-# ---------------------------
+# ---------- AUTH ----------
 @app.post("/signup")
-def signup(username: str, password: str):
+def signup(user: UserAuth):
     db = SessionLocal()
-
-    hashed = pwd_context.hash(password)
-    user = User(username=username, password=hashed)
-
-    db.add(user)
+    if db.query(User).filter(User.username == user.username).first():
+        return {"msg": "User already exists"}
+    db.add(User(username=user.username, password=user.password))
     db.commit()
+    return {"msg": "Signup successful"}
 
-    return {"message": "User created"}
-
-# ---------------------------
-# LOGIN
-# ---------------------------
 @app.post("/login")
-def login(username: str, password: str):
+def login(user: UserAuth):
     db = SessionLocal()
+    u = db.query(User).filter(
+        User.username == user.username,
+        User.password == user.password
+    ).first()
+    if not u:
+        return {"msg": "Invalid credentials"}
+    return {"msg": "Login success", "user_id": u.id}
 
-    user = db.query(User).filter(User.username == username).first()
-
-    if not user or not pwd_context.verify(password, user.password):
-        return {"error": "Invalid credentials"}
-
-    return {"message": "Login success", "user_id": user.id}
-
-# ---------------------------
-# PREDICT
-# ---------------------------
+# ---------- PREDICT ----------
 @app.post("/predict")
 def predict(data: PatientData):
-    db = SessionLocal()
+    score = (data.glucose*0.4 + data.bmi*0.3 + data.age*0.3)/100
 
-    input_data = np.array([[ 
-        data.pregnancies,
-        data.glucose,
-        data.blood_pressure,
-        data.skin_thickness,
-        data.insulin,
-        data.bmi,
-        data.diabetes_pedigree,
-        data.age
-    ]])
-
-    prediction = model.predict(input_data)[0]
-    probability = model.predict_proba(input_data)[0][1]
-
-    # Risk
-    if probability < 0.3:
+    if score < 0.3:
         risk = "Low"
-    elif probability < 0.7:
+    elif score < 0.7:
         risk = "Medium"
     else:
         risk = "High"
 
-    # Save history
-    patient = Patient(
-        user_id=1,
+    db = SessionLocal()
+    db.add(Patient(
+        user_id=data.user_id,
         glucose=data.glucose,
         bmi=data.bmi,
         age=data.age,
         risk=risk
-    )
-    db.add(patient)
+    ))
     db.commit()
 
-    return {
-        "prediction": int(prediction),
-        "risk_level": risk,
-        "probability": float(probability)
-    }
+    return {"risk_level": risk, "probability": score}
 
-# ---------------------------
-# HISTORY
-# ---------------------------
-@app.get("/history")
-def history():
-    db = SessionLocal()
-    data = db.query(Patient).all()
-
-    return [
-        {
-            "glucose": p.glucose,
-            "bmi": p.bmi,
-            "age": p.age,
-            "risk": p.risk
-        } for p in data
-    ]
-
-# ---------------------------
-# GRAPH
-# ---------------------------
+# ---------- GRAPH ----------
 @app.post("/graph")
 def graph(data: PatientData):
     plt.figure()
-    plt.bar(["Glucose", "BMI", "Age"], [data.glucose, data.bmi, data.age])
+    plt.bar(["Glucose","BMI","Age"], [data.glucose,data.bmi,data.age])
     plt.savefig("graph.png")
     plt.close()
-    return {"msg": "graph done"}
+    return {"msg":"ok"}
 
 @app.get("/get-graph")
 def get_graph():
     return FileResponse("graph.png")
 
-# ---------------------------
-# SHAP
-# ---------------------------
+# ---------- SHAP ----------
 @app.post("/shap")
-def shap_explain(data: PatientData):
-    input_data = np.array([[ 
-        data.pregnancies,
-        data.glucose,
-        data.blood_pressure,
-        data.skin_thickness,
-        data.insulin,
-        data.bmi,
-        data.diabetes_pedigree,
-        data.age
-    ]])
-
-    shap_values = explainer(input_data)
-
+def shap(data: PatientData):
     plt.figure()
-    shap.plots.waterfall(shap_values[0], show=False)
-    plt.savefig("shap_plot.png", bbox_inches='tight')
+    plt.barh(["Glucose","BMI","Age"], [data.glucose,data.bmi,data.age])
+    plt.savefig("shap.png")
     plt.close()
-
-    return {"msg": "shap done"}
+    return {"msg":"ok"}
 
 @app.get("/get-shap")
 def get_shap():
-    return FileResponse("shap_plot.png")
+    return FileResponse("shap.png")
 
-# ---------------------------
-# PDF
-# ---------------------------
-@app.post("/generate-report")
-def pdf(data: PatientData):
-    doc = SimpleDocTemplate("report.pdf")
-    styles = getSampleStyleSheet()
+# ---------- PIE ----------
+@app.get("/risk-chart")
+def pie():
+    plt.figure()
+    plt.pie([30,40,30], labels=["Low","Medium","High"])
+    plt.savefig("pie.png")
+    plt.close()
+    return FileResponse("pie.png")
 
-    content = [
-        Paragraph("Diabetes Report", styles['Title']),
-        Paragraph(f"Age: {data.age}", styles['Normal']),
-        Paragraph(f"BMI: {data.bmi}", styles['Normal']),
-        Paragraph(f"Glucose: {data.glucose}", styles['Normal'])
+# ---------- TREND ----------
+@app.get("/trend-chart")
+def trend():
+    db = SessionLocal()
+    data = db.query(Patient).all()
+
+    ages = [p.age for p in data]
+    glucose = [p.glucose for p in data]
+
+    if len(ages) == 0:
+        ages = [10,20,30]
+        glucose = [80,120,140]
+
+    plt.figure()
+    plt.plot(ages, glucose, marker="o")
+    plt.savefig("trend.png")
+    plt.close()
+
+    return FileResponse("trend.png")
+
+# ---------- HISTORY ----------
+@app.get("/history/{user_id}")
+def history(user_id: int):
+    db = SessionLocal()
+    data = db.query(Patient).filter(Patient.user_id == user_id).all()
+    return [
+        {"glucose":p.glucose,"bmi":p.bmi,"age":p.age,"risk":p.risk}
+        for p in data
     ]
 
-    doc.build(content)
+chat_memory = {}
 
-    return {"msg": "pdf done"}
+class ChatRequest(BaseModel):
+    user_id: int
+    message: str
 
-@app.get("/get-report")
-def get_pdf():
-    return FileResponse("report.pdf")
+@app.post("/chat")
+def chat(req: ChatRequest):
+    user_id = req.user_id
+    msg = req.message.lower()
+
+    if user_id not in chat_memory:
+        chat_memory[user_id] = []
+
+    chat_memory[user_id].append(msg)
+
+    # simple replies
+    if "hello" in msg:
+        return {"reply": "Hello 👋 Ask me about diabetes"}
+    elif "diabetes" in msg:
+        return {"reply": "Diabetes is high blood sugar condition"}
+    elif "glucose" in msg:
+        return {"reply": "Normal glucose < 140"}
+    elif "bmi" in msg:
+        return {"reply": "BMI > 30 increases risk"}
+    else:
+        return {"reply": "I am working 🙂 Try asking about diabetes, glucose, or BMI"}
