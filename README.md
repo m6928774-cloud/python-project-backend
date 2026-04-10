@@ -1,37 +1,16 @@
-🩺 Diabetes Prediction System
-📌 Overview
+# React + Vite
 
-This project is a Machine Learning-based Diabetes Prediction System that predicts whether a person is likely to have diabetes based on medical input features. It uses trained ML models to analyze health data and provide fast and accurate predictions.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-This system is designed to assist in early detection of Diabetes mellitus, helping users take preventive healthcare actions.
+Currently, two official plugins are available:
 
-🚀 Features
-Predicts diabetes risk using user input data
-Simple and interactive interface (CLI / Web app if applicable)
-Trained machine learning model (e.g., Logistic Regression / Random Forest)
-Data preprocessing and feature scaling
-High accuracy prediction system
-🧠 Technologies Used
-Python 🐍
-NumPy
-Pandas
-Scikit-learn
-Matplotlib / Seaborn (optional for visualization)
-Flask / Streamlit (if you built UI)
-📊 Dataset
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-The model is trained on the Pima Indians Diabetes Dataset, which includes medical details such as:
+## React Compiler
 
-Glucose level
-Blood pressure
-Insulin level
-BMI
-Age
-Skin thickness
-⚙️ How It Works
-User inputs health parameters
-Data is preprocessed and scaled
-ML model analyzes input
-System predicts:
-🟢 Non-Diabetic
-🔴 Diabetic
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
